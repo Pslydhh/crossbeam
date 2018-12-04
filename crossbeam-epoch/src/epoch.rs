@@ -23,50 +23,35 @@ impl Epoch {
     /// Returns the starting epoch in unpinned state.
     #[inline]
     pub fn starting() -> Self {
-        Self::default()
+        Epoch {
+            data: usize::max_value(),
+        }
     }
-
-    /// Returns the number of epochs `self` is ahead of `rhs`.
-    ///
-    /// Internally, epochs are represented as numbers in the range `(isize::MIN / 2) .. (isize::MAX
-    /// / 2)`, so the returned distance will be in the same interval.
-    pub fn wrapping_sub(self, rhs: Self) -> isize {
-        // The result is the same with `(self.data & !1).wrapping_sub(rhs.data & !1) as isize >> 1`,
-        // because the possible difference of LSB in `(self.data & !1).wrapping_sub(rhs.data & !1)`
-        // will be ignored in the shift operation.
-        self.data.wrapping_sub(rhs.data & !1) as isize >> 1
-    }
-
-    /// Returns `true` if the epoch is marked as pinned.
+    
     #[inline]
-    pub fn is_pinned(self) -> bool {
-        (self.data & 1) == 1
+    pub fn zeroing() -> Self {
+        Epoch {
+            data: 0,
+        }
     }
-
+    
     /// Returns the same epoch, but marked as pinned.
     #[inline]
     pub fn pinned(self) -> Epoch {
         Epoch {
-            data: self.data | 1,
+            data: self.data,
         }
     }
-
-    /// Returns the same epoch, but marked as unpinned.
+    
+    /// Returns `true` if the epoch is marked as pinned.
     #[inline]
-    pub fn unpinned(self) -> Epoch {
-        Epoch {
-            data: self.data & !1,
-        }
+    pub fn is_pinned(self) -> bool {
+        self.data != usize::max_value()
     }
-
-    /// Returns the successor epoch.
-    ///
-    /// The returned epoch will be marked as pinned only if the previous one was as well.
+    
     #[inline]
-    pub fn successor(self) -> Epoch {
-        Epoch {
-            data: self.data.wrapping_add(2),
-        }
+    pub fn unpinned(self) -> usize {
+        self.data
     }
 }
 
@@ -98,6 +83,11 @@ impl AtomicEpoch {
     #[inline]
     pub fn store(&self, epoch: Epoch, ord: Ordering) {
         self.data.store(epoch.data, ord);
+    }
+    
+    /// stores a value into the atomic epoch.
+    pub fn store_epoch(&self, epoch: usize, ord: Ordering) {
+        self.data.store(epoch, ord);
     }
 
     /// Stores a value into the atomic epoch if the current value is the same as `current`.

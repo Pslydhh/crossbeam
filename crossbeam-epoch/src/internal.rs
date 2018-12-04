@@ -42,6 +42,8 @@ use core::num::Wrapping;
 use core::ptr;
 use core::sync::atomic;
 use core::sync::atomic::Ordering;
+use alloc::thread;
+use alloc::sync::mpsc::Sender;
 
 use arrayvec::ArrayVec;
 use crossbeam_utils::CachePadded;
@@ -123,7 +125,8 @@ impl SealedBag {
     fn is_expired(&self, global_epoch: Epoch) -> bool {
         // A pinned participant can witness at most one epoch advancement. Therefore, any bag that
         // is within one epoch of the current one cannot be destroyed yet.
-        global_epoch.wrapping_sub(self.epoch) >= 2
+        // global_epoch.wrapping_sub(self.epoch) >= 2
+        true
     }
 }
 
@@ -149,20 +152,46 @@ impl Global {
         Self {
             locals: List::new(),
             queue: Queue::new(),
-            epoch: CachePadded::new(AtomicEpoch::new(Epoch::starting())),
+            epoch: CachePadded::new(AtomicEpoch::new(Epoch::zeroing())),
         }
     }
 
     /// Pushes the bag into the global queue and replaces the bag with a new empty bag.
-    pub fn push_bag(&self, bag: &mut Bag, guard: &Guard) {
+    pub fn push_bag(&self, bag: &mut Bag, sender: &Sender<usize>, guard: &Guard) {
         let bag = mem::replace(bag, Bag::new());
 
         atomic::fence(Ordering::SeqCst);
 
         let epoch = self.epoch.load(Ordering::Relaxed);
-        self.queue.push(bag.seal(epoch), guard);
+        self.queue.push(bag.seal(epoch), sender, guard);
+    }
+    
+    pub fn try_until_epoch(&self, epoch: usize, guard: &Guard) {
+        // atomic::fence(Ordering::SeqCst);
+        for local in self.locals.iter(&guard) {
+            match local {
+                Err(IterError::Stalled) => {}
+                Ok(local) => {
+                    loop {
+                        let local_epoch = local.epoch.load(Ordering::Acquire);
+                        // array[0].2 is the block's epoch
+                        if !local_epoch.is_pinned() || local_epoch.unpinned() >= epoch {
+                            break;
+                        }
+                        // println!("yield_now");
+                        thread::yield_now();
+                    }                
+                }
+            }
+        }
+        atomic::fence(Ordering::Acquire);
+    }
+    
+    pub fn drop_bags_per_block(&self, guard: &Guard) {
+        self.queue.drop_bags_per_block(guard);
     }
 
+    /*
     /// Collects several bags from the global queue and executes deferred functions in them.
     ///
     /// Note: This may itself produce garbage and in turn allocate new bags.
@@ -239,6 +268,7 @@ impl Global {
         self.epoch.store(new_epoch, Ordering::Release);
         new_epoch
     }
+    */
 }
 
 /// Participant for garbage collection.
@@ -278,7 +308,6 @@ impl Local {
     pub fn register(collector: &Collector) -> LocalHandle {
         unsafe {
             // Since we dereference no pointers in this block, it is safe to use `unprotected`.
-
             let local = Owned::new(Local {
                 entry: Entry::default(),
                 epoch: AtomicEpoch::new(Epoch::starting()),
@@ -299,6 +328,11 @@ impl Local {
     #[inline]
     pub fn global(&self) -> &Global {
         &self.collector().global
+    }
+    
+    #[inline]
+    pub fn sender(&self) -> &Sender<usize> {
+        &self.collector().sender
     }
 
     /// Returns a reference to the `Collector` in which this `Local` resides.
@@ -322,7 +356,7 @@ impl Local {
         let bag = &mut *self.bag.get();
 
         while let Err(d) = bag.try_push(deferred) {
-            self.global().push_bag(bag, guard);
+            self.global().push_bag(bag, self.sender(), guard);
             deferred = d;
         }
     }
@@ -331,10 +365,10 @@ impl Local {
         let bag = unsafe { &mut *self.bag.get() };
 
         if !bag.is_empty() {
-            self.global().push_bag(bag, guard);
+            self.global().push_bag(bag, self.sender(), guard);
         }
 
-        self.global().collect(guard);
+    //  self.global().collect(guard);
     }
 
     /// Pins the `Local`.
@@ -380,6 +414,7 @@ impl Local {
                 atomic::fence(Ordering::SeqCst);
             }
 
+            /*
             // Increment the pin counter.
             let count = self.pin_count.get();
             self.pin_count.set(count + Wrapping(1));
@@ -389,6 +424,7 @@ impl Local {
             if count.0 % Self::PINNINGS_BETWEEN_COLLECT == 0 {
                 self.global().collect(&guard);
             }
+            */
         }
 
         guard
@@ -401,7 +437,7 @@ impl Local {
         self.guard_count.set(guard_count - 1);
 
         if guard_count == 1 {
-            self.epoch.store(Epoch::starting(), Ordering::Release);
+            self.epoch.store_epoch(usize::max_value(), Ordering::Release);
 
             if self.handle_count.get() == 0 {
                 self.finalize();
@@ -466,7 +502,7 @@ impl Local {
             // Pin and move the local bag into the global queue. It's important that `push_bag`
             // doesn't defer destruction on any new garbage.
             let guard = &self.pin();
-            self.global().push_bag(&mut *self.bag.get(), guard);
+            self.global().push_bag(&mut *self.bag.get(), self.sender(), guard);
         }
         // Revert the handle count back to zero.
         self.handle_count.set(0);

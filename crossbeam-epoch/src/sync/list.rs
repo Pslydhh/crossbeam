@@ -269,7 +269,6 @@ impl<'g, T: 'g, C: IsElement<T>> Iterator for Iter<'g, T, C> {
                         // been deleted, we need to restart from `head`.
                         self.pred = self.head;
                         self.curr = self.head.load(Acquire, self.guard);
-
                         return Some(Err(IterError::Stalled));
                     }
                 }

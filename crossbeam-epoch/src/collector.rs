@@ -13,6 +13,11 @@
 /// handle.pin().flush();
 /// ```
 use alloc::sync::Arc;
+use alloc::thread;
+use alloc::sync::mpsc::channel;
+use alloc::sync::mpsc::Sender;
+use alloc::sync::mpsc::Receiver;
+use alloc::option::Option;
 use core::fmt;
 
 use guard::Guard;
@@ -21,6 +26,8 @@ use internal::{Global, Local};
 /// An epoch-based garbage collector.
 pub struct Collector {
     pub(crate) global: Arc<Global>,
+    pub(crate) sender: Sender<usize>,
+    pub(crate) receiver: Option<Receiver<usize>>,
 }
 
 unsafe impl Send for Collector {}
@@ -29,8 +36,13 @@ unsafe impl Sync for Collector {}
 impl Collector {
     /// Creates a new collector.
     pub fn new() -> Self {
+        let global = Arc::new(Global::new());
+        let (sender, receiver) = channel();
+        
         Collector {
-            global: Arc::new(Global::new()),
+            global: global,
+            sender: sender,
+            receiver: Some(receiver),
         }
     }
 
@@ -45,6 +57,8 @@ impl Clone for Collector {
     fn clone(&self) -> Self {
         Collector {
             global: self.global.clone(),
+            sender: self.sender.clone(),
+            receiver: None,
         }
     }
 }
