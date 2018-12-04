@@ -49,7 +49,6 @@ lazy_static! {
                 }
                 
                 // for reclaim
-                // Invariant: array[0] must exists.
                 if array.len() > 0 && (epoch - array[0].1) > COLLECT_BLOCKS {
                     // try to wait all threads reach epoch. 
                     // this must be fast, because the epoch(array[0].1) has been a long time.....
