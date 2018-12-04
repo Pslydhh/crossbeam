@@ -334,18 +334,6 @@ impl Local {
                 self.epoch.store(new_epoch, Ordering::Relaxed);
                 atomic::fence(Ordering::SeqCst);
             }
-
-            /*
-            // Increment the pin counter.
-            let count = self.pin_count.get();
-            self.pin_count.set(count + Wrapping(1));
-
-            // After every `PINNINGS_BETWEEN_COLLECT` try advancing the epoch and collecting
-            // some garbage.
-            if count.0 % Self::PINNINGS_BETWEEN_COLLECT == 0 {
-                self.global().collect(&guard);
-            }
-            */
         }
 
         guard
