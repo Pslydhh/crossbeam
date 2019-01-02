@@ -58,7 +58,7 @@ use sync::queue::Queue;
 
 /// Maximum number of objects a bag can contain.
 #[cfg(not(feature = "sanitize"))]
-const MAX_OBJECTS: usize = 64;
+const MAX_OBJECTS: usize = 16;
 #[cfg(feature = "sanitize")]
 const MAX_OBJECTS: usize = 4;
 
@@ -166,14 +166,14 @@ impl Global {
         self.queue.push(bag.seal(epoch), sender, guard);
     }
     
-    pub fn try_until_epoch(&self, epoch: usize, guard: &Guard) {
+    pub fn wait_until_epoch(&self, epoch: usize, guard: &Guard) {
         // atomic::fence(Ordering::SeqCst);
         for local in self.locals.iter(&guard) {
             match local {
                 Err(IterError::Stalled) => {}
                 Ok(local) => {
                     loop {
-                        let local_epoch = local.epoch.load(Ordering::Acquire);
+                        let local_epoch = local.epoch.load(Ordering::Relaxed);
                         // array[0].2 is the block's epoch
                         if !local_epoch.is_pinned() || local_epoch.unpinned() >= epoch {
                             break;
