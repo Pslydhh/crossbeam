@@ -11,7 +11,7 @@ use alloc::cell::Cell;
 use alloc::sync::atomic::Ordering;
 use unprotected;
 
-const COLLECT_BLOCKS: usize = 16;
+const COLLECT_BLOCKS: usize = 2;
 
 lazy_static! {
     /// The global data for the default garbage collector.
@@ -49,10 +49,10 @@ lazy_static! {
                 }
                 
                 // for reclaim
-                if array.len() > 0 && (epoch - array[0].1) > COLLECT_BLOCKS {
+                if array.len() > 0 && (epoch - array[0].1) >= COLLECT_BLOCKS {
                     // try to wait all threads reach epoch. 
                     // this must be fast, because the epoch(array[0].1) has been a long time.....
-                    collector.global.try_until_epoch(array[0].1, &guard);
+                    collector.global.wait_until_epoch(array[0].1, &guard);
                     let nums = array[0].0.get();
                     for _ in 0..nums {
                         collector.global.drop_bags_per_block(&guard);
