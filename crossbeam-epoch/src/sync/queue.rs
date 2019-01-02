@@ -26,9 +26,6 @@ const BLOCK_CAP: usize = 32;
 struct Slot<T> {
     /// The message.
     msg: UnsafeCell<ManuallyDrop<T>>,
-
-    /// Equals `true` if the message is ready for reading.
-    ready: AtomicBool,
 }
 
 struct Block<T> {
@@ -87,12 +84,6 @@ impl<T> Queue<T> {
         for offset in 0..BLOCK_CAP {
             let slot = unsafe { &*head.slots.get_unchecked(offset).get() };
             
-            /*
-            if !slot.ready.load(Ordering::Relaxed) {
-                println!("ready is not ready {:?}", offset);
-            }
-            */
-            
             unsafe {
                 let slot = &*head.slots.get_unchecked(offset).get();
                 let data = ManuallyDrop::into_inner(slot.msg.get().read());
@@ -116,9 +107,6 @@ impl<T> Queue<T> {
     
             for offset in 0..BLOCK_CAP {
                 let slot = unsafe { &*head.slots.get_unchecked(offset).get() };
-                if !slot.ready.load(Ordering::Relaxed) {
-                    break;
-                }
                 
                 unsafe {
                     let slot = &*head.slots.get_unchecked(offset).get();
@@ -184,7 +172,6 @@ impl<T> Queue<T> {
                     unsafe {
                         let slot = tail.slots.get_unchecked(offset).get();
                         (*slot).msg.get().write(ManuallyDrop::new(t));
-                        (*slot).ready.store(true, Ordering::Release);
                     }
                     
                     if offset + 1 == BLOCK_CAP {
