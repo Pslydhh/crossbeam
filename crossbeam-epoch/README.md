@@ -1,4 +1,5 @@
-This is an implementation of [`Dedicated GC threads`] based on [`crossbeam-epoch`], and the core functions have been implemented. As described in [`Alternative dedicated GC thread scheme`].
+This is an implementation of [`Dedicated GC threads`] based on [`crossbeam-epoch`], and the core functions have been implemented. 
+As described in [`Alternative dedicated GC thread scheme`].
 
 
 
