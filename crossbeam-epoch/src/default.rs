@@ -11,7 +11,7 @@ use alloc::cell::Cell;
 use alloc::sync::atomic::Ordering;
 use unprotected;
 
-const COLLECT_BLOCKS: usize = 2;
+const EPOCH_EVOLUTION: usize = 2;
 
 lazy_static! {
     /// The global data for the default garbage collector.
@@ -43,13 +43,15 @@ lazy_static! {
                 
                 // if block_id > max_block_id: new slice could be reclaimed at future.
                 if block_id > max_block_id {
-                    // println!("block_id: {:?}", block_id);
+				
+				    // means if all threads' epoch reach/will reach epoch, the slice(.., block_id) of queue blocks could be reclaimed
                     array.push( (Cell::new(block_id - max_block_id), epoch) );
                     max_block_id = block_id;
                 }
                 
                 // for reclaim
-                if array.len() > 0 && (epoch - array[0].1) >= COLLECT_BLOCKS {
+                if array.len() > 0 && (epoch - array[0].1) >= EPOCH_EVOLUTION {
+				
                     // try to wait all threads reach epoch. 
                     // this must be fast, because the epoch(array[0].1) has been a long time.....
                     collector.global.wait_until_epoch(array[0].1, &guard);
